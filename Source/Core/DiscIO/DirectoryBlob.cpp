@@ -847,7 +847,23 @@ DirectoryBlobPartition::DirectoryBlobPartition(std::string root_directory,
 
   SetDiscType(is_wii, disc_header);
   SetBI2FromFile(m_root_directory + "sys/bi2.bin");
-  const u64 dol_address = SetApploaderFromFile(m_root_directory + "sys/apploader.img");
+  u64 dol_address = SetApploaderFromFile(m_root_directory + "sys/apploader.img");
+
+  // Arcade (Triforce) games reboot through code that re-reads the DOL header at the disc offset it
+  // had on the original disc (0x18000), so keep the offset recorded in sys/boot.bin whenever the
+  // packed layout would put the DOL earlier than that.
+  if (!m_is_wii && disc_header.size() >= 0x424)
+  {
+    u32 original_dol_offset = 0;
+    std::memcpy(&original_dol_offset, &disc_header[0x420], sizeof(original_dol_offset));
+    const u64 original_dol_address = Common::swap32(original_dol_offset);
+    if (original_dol_address > dol_address && original_dol_address < 0x100000 &&
+        original_dol_address % 0x20 == 0)
+    {
+      dol_address = original_dol_address;
+    }
+  }
+
   const u64 fst_address =
       SetDOLFromFile(m_root_directory + "sys/main.dol", dol_address, &disc_header);
   BuildFSTFromFolder(m_root_directory + "files/", fst_address, &disc_header);
