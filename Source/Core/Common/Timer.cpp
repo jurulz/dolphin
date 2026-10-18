@@ -68,11 +68,21 @@ u64 Timer::ElapsedMs() const
 
 u64 Timer::GetLocalTimeSinceJan1970()
 {
-#ifdef _MSC_VER
-  std::chrono::zoned_seconds seconds(
-      std::chrono::current_zone(),
-      std::chrono::time_point_cast<std::chrono::seconds>(std::chrono::system_clock::now()));
-  return seconds.get_local_time().time_since_epoch().count();
+#ifdef _WIN32
+  // std::chrono::current_zone() needs ICU, which only exists on Windows 10 1903+.
+  // Use the Win32 API so this also works on older Windows 10 builds.
+  SYSTEMTIME utc_time{};
+  SYSTEMTIME local_time{};
+  GetSystemTime(&utc_time);
+  if (!SystemTimeToTzSpecificLocalTime(nullptr, &utc_time, &local_time))
+    local_time = utc_time;
+  FILETIME file_time{};
+  SystemTimeToFileTime(&local_time, &file_time);
+  ULARGE_INTEGER ticks;
+  ticks.LowPart = file_time.dwLowDateTime;
+  ticks.HighPart = file_time.dwHighDateTime;
+  // FILETIME counts 100ns intervals since 1601-01-01.
+  return ticks.QuadPart / 10000000ULL - 11644473600ULL;
 #else
   time_t sysTime, tzDiff, tzDST;
   time(&sysTime);
